@@ -1,0 +1,13 @@
+[Unit]
+Description=Loupedeck board for Claude Code sessions
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=@NODE@ @DIR@/src/main.js
+WorkingDirectory=@DIR@
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,5 @@
+node_modules/
+# Codex pet artwork belongs to OpenAI: downloaded by install.sh / npm run fetch-pets
+assets/pets/*.png
+*.bak-*
+*.tmp

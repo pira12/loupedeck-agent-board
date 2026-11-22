@@ -1,0 +1,2 @@
+# Loupedeck devices: give the logged-in user access to the serial port
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2ec2", MODE="0660", TAG+="uaccess"

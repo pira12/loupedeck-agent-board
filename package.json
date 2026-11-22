@@ -1,0 +1,37 @@
+{
+  "name": "loupedeck-agent-board",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Turn a Loupedeck Live S into a live status board for your Claude Code and Codex terminal sessions on Linux.",
+  "license": "MIT",
+  "keywords": [
+    "loupedeck",
+    "loupedeck-live-s",
+    "claude-code",
+    "codex",
+    "tilix",
+    "linux",
+    "hooks",
+    "stream-deck"
+  ],
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test 'test/*.test.js'",
+    "fetch-pets": "node scripts/fetch-pets.mjs",
+    "preview": "node scripts/board-preview.mjs --demo docs/images/board.png"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "loupedeck": "7.2.1",
+    "sharp": "0.34.5"
+  },
+  "allowScripts": {
+    "canvas@3.2.3": true,
+    "@serialport/bindings-cpp@13.0.0": true,
+    "sharp@0.34.5": true
+  }
+}
