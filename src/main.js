@@ -8,6 +8,7 @@ import { scanCodexProcesses } from './procs.js'
 import { TokenCounter } from './tokens.js'
 import { killSessions, openAgentTab } from './actions.js'
 import { playIntro } from './intro.js'
+import { watchForResume, makeReconnector } from './wake.js'
 
 const PORT = Number(process.env.LOUPEDECK_CLAUDE_PORT) || 47800
 const log = msg => console.log(`[${new Date().toISOString()}] ${msg}`)
@@ -52,6 +53,10 @@ log(`listening on 127.0.0.1:${PORT}, ${store.list().length} session(s) restored`
 const device = new LoupedeckLiveS({ reconnectInterval: 3000, autoConnect: false })
 board.attach(device)
 device.connect().catch(e => log(`waiting for Loupedeck: ${e.message ?? e}`))
+
+// Wake the Loupedeck back up after the PC resumes from sleep
+const reconnect = makeReconnector(device, { log })
+watchForResume(gap => reconnect(`system resumed after ${Math.round(gap / 1000)} s`))
 
 // Discover Codex terminals (their hooks can't tell us which tab they're in)
 setInterval(() => { if (store.syncCodexProcesses(scanCodexProcesses())) changed() }, 2000)
