@@ -204,3 +204,39 @@ test('intro errors do not break the board', async () => {
     await new Promise(r => setTimeout(r, 20))
     assert.equal(board.busy, false)
 })
+
+const tick = () => new Promise(r => setImmediate(r))
+
+test('a draw left hanging by a disconnect does not freeze the board after reconnect', async () => {
+    const { board, dev } = setup(3)
+    dev.emit('connect', {})
+    await tick(); await tick()
+    // The device stops answering: the next draw never resolves
+    const realDraw = dev.drawKey.bind(dev)
+    dev.drawKey = () => new Promise(() => {})
+    board.store.applyEvent({ event: 'UserPromptSubmit', session_id: 's0', cwd: '/p/0' })
+    board.render()
+    await tick()
+    dev.emit('disconnect', new Error('bad file descriptor'))
+    dev.drawKey = realDraw
+    dev.emit('connect', {})
+    for (let i = 0; i < 5; i++) await tick()
+    const before = dev.draws
+    board.store.applyEvent({ event: 'Stop', session_id: 's0', cwd: '/p/0' })
+    await board.render()
+    assert.ok(dev.draws > before, 'board draws again after reconnecting')
+})
+
+test('a draw the device never answers times out instead of freezing the board', async () => {
+    const { board, dev } = setup(3, { drawTimeoutMs: 20 })
+    dev.emit('connect', {})
+    await tick(); await tick()
+    const realDraw = dev.drawKey.bind(dev)
+    dev.drawKey = () => new Promise(() => {})
+    board.store.applyEvent({ event: 'UserPromptSubmit', session_id: 's0', cwd: '/p/0' })
+    await board.render()
+    dev.drawKey = realDraw
+    const before = dev.draws
+    await board.render()
+    assert.ok(dev.draws > before, 'board draws again after the timeout')
+})

@@ -36,13 +36,15 @@ export class Board extends EventEmitter {
      * @param opts.tokens () => { claude, codex }
      * @param opts.intro (device, { shouldStop }) => Promise   startup animation, played on connect
      * @param opts.revealMs delay between keys when the board appears after the intro
+     * @param opts.drawTimeoutMs give up on a device call the Loupedeck never answers
      */
     constructor(store, {
         focus, killAll = () => 0, newTab = async () => false, tokens = () => ({ claude: 0, codex: 0 }),
-        intro = null, revealMs = 45, now = Date.now, log = () => {},
+        intro = null, revealMs = 45, now = Date.now, log = () => {}, drawTimeoutMs = 2000,
     } = {}) {
         super()
-        Object.assign(this, { store, focus, killAll, newTab, tokens, intro, revealMs, now, log })
+        Object.assign(this, { store, focus, killAll, newTab, tokens, intro, revealMs, now, log, drawTimeoutMs })
+        this.resetAbort()
         this.busy = false // intro or reveal in progress: normal rendering paused
         this.skipIntro = false
         this.page = 0
@@ -196,18 +198,42 @@ export class Board extends EventEmitter {
         if (id === JUMP_BUTTON) return this.pressJumpButton()
     }
 
+    /** Fresh abort signal for device calls on the current connection. */
+    resetAbort() {
+        const abort = { }
+        abort.promise = new Promise((_, reject) => { abort.reject = reject })
+        abort.promise.catch(() => {})
+        this.abort = abort
+    }
+
+    /**
+     * Run a device call, but fail it on disconnect or when the device never
+     * answers. The loupedeck library waits forever for a reply, and one lost
+     * reply would otherwise leave rendering stuck for good.
+     */
+    deviceCall(fn) {
+        let timer
+        const timeout = new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('device did not respond')), this.drawTimeoutMs)
+        })
+        return Promise.race([Promise.resolve().then(fn), this.abort.promise, timeout])
+            .finally(() => clearTimeout(timer))
+    }
+
     attach(device) {
         this.device = device
         device.on('connect', async info => {
+            this.resetAbort()
             this.connected = true
             this.leds = {}
             this.keyCache.fill(null)
             this.log(`device connected ${JSON.stringify(info ?? {})}`)
-            try { await device.setBrightness(this.brightness) } catch {}
+            try { await this.deviceCall(() => device.setBrightness(this.brightness)) } catch {}
             await this.startup()
         })
         device.on('disconnect', err => {
             this.connected = false
+            this.abort.reject(new Error('device disconnected'))
             this.cancelKillHold()
             this.log(`device disconnected${err ? `: ${err.message ?? err}` : ''}`)
         })
@@ -239,7 +265,8 @@ export class Board extends EventEmitter {
         this.skipIntro = false
         try {
             if (this.intro) {
-                await this.intro(this.device, { shouldStop: () => this.skipIntro || !this.connected })
+                const device = { drawScreen: (...args) => this.deviceCall(() => this.device.drawScreen(...args)) }
+                await this.intro(device, { shouldStop: () => this.skipIntro || !this.connected })
             }
             const content = this.keyContent(this.now())
             const order = [...Array(KEYS).keys()]
@@ -247,7 +274,7 @@ export class Board extends EventEmitter {
                 if (!this.connected) break
                 const [sig, draw] = content(key)
                 this.keyCache[key] = sig
-                await this.device.drawKey(key, draw)
+                await this.deviceCall(() => this.device.drawKey(key, draw))
                 if (!this.skipIntro && this.revealMs) await new Promise(r => setTimeout(r, this.revealMs))
             }
         } catch (e) {
@@ -328,7 +355,7 @@ export class Board extends EventEmitter {
             const [sig, draw] = content(key)
             if (this.keyCache[key] === sig) continue
             this.keyCache[key] = sig
-            await this.device.drawKey(key, draw)
+            await this.deviceCall(() => this.device.drawKey(key, draw))
         }
         await this.drawLeds()
     }
@@ -342,7 +369,7 @@ export class Board extends EventEmitter {
         for (const [id, color] of Object.entries(want)) {
             if (this.leds[id] === color) continue
             this.leds[id] = color
-            await this.device.setButtonColor({ id: Number(id), color }).catch(() => {})
+            await this.deviceCall(() => this.device.setButtonColor({ id: Number(id), color })).catch(() => { delete this.leds[id] })
         }
     }
 }
